@@ -1,9 +1,11 @@
-module Main where
+-- | Luonnollisen kielen käsittelyä, esimerkkien (<http://nlpwp.org/>) mukaan.
+module Lang where
 
 import qualified Data.Map as M
 import qualified Data.Vector as V
 import Data.List (foldl', tails, sortBy)
 import Data.Maybe (isJust)
+
 
 data SuffixArray a = SuffixArray (V.Vector a) (V.Vector Int)
                      deriving Show
