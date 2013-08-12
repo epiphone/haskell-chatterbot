@@ -3,12 +3,24 @@ module Main where
 
 import qualified Data.List as L
 import qualified Data.Map  as M
+import qualified Data.Set as S
+import qualified Data.List.Zipper as Z
 
 type Token = String
 type Tag = String
 
 data TrainingInstance = TrainingInstance Token Tag
                         deriving Show
+
+data Replacement = Replacement Tag Tag
+                   deriving (Eq, Ord, Show)
+
+data TransformationRule =
+      NextTagRule Replacement Tag -- NextTagRule (Replacement a b) c = replace a with b when next tag is c
+    | PrevTagRule Replacement Tag
+    | SurroundTagRule Replacement Tag Tag
+      deriving (Eq, Ord, Show)
+
 
 -- Tarkistetaan freqTaggerin tarkkuus
 main :: IO ()
@@ -72,3 +84,52 @@ evalTagger tagger = L.foldl' eval (0, 0, 0)
                       then (n+1, c+1, u)
                       else (n+1, c, u)
         Nothing  -> (n+1, c, u+1)
+
+
+-- Sääntöhommat:
+
+instNextTagRule :: Z.Zipper (Tag, Tag) -> Maybe TransformationRule
+instNextTagRule z = do
+  (_, nextIncorrect) <- rightCursor z
+  (correct, incorrect) <- Z.safeCursor z
+  return $ NextTagRule (Replacement incorrect correct) nextIncorrect
+
+instPrevTagRule :: Z.Zipper (Tag, Tag) -> Maybe TransformationRule
+instPrevTagRule z = do
+  (_, prevIncorrect) <- leftCursor z
+  (correct, incorrect) <- Z.safeCursor z
+  return $ PrevTagRule (Replacement incorrect correct) prevIncorrect
+
+instSurroundTagRule :: Z.Zipper (Tag, Tag) -> Maybe TransformationRule
+instSurroundTagRule z = do
+  (_, prevIncorrect) <- leftCursor z
+  (_, nextIncorrect) <- rightCursor z
+  (correct, incorrect) <- Z.safeCursor z
+  return $ SurroundTagRule (Replacement incorrect correct)
+           prevIncorrect nextIncorrect
+
+
+-- Apufunktiot vasemmalle ja oikealle kursorille Maybe-monadissa:
+
+rightCursor :: Z.Zipper a -> Maybe a
+rightCursor = Z.safeCursor . Z.right
+
+leftCursor :: Z.Zipper a -> Maybe a
+leftCursor z = if Z.beginp z then Nothing else Just $ Z.cursor $ Z.left z
+
+
+instRules' :: [(Z.Zipper (Tag, Tag) -> Maybe TransformationRule)] ->
+              Z.Zipper (Tag, Tag) -> S.Set TransformationRule
+instRules' fs = Z.foldlz' getRules S.empty
+  where
+    getRules acc zipper
+      | correct == incorrect = acc
+      | otherwise = foldl (applyFunc zipper) acc fs
+      where (correct, incorrect) = Z.cursor zipper
+    applyFunc z acc f = case f z of
+                          Nothing -> acc
+                          Just r  -> S.insert r acc
+
+
+taggingState = Z.fromList $ zip ["AT","NN","TO"] ["AT","VB","TO"]
+ruleInstantiators = [instNextTagRule, instPrevTagRule, instSurroundTagRule]
