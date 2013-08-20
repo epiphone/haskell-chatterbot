@@ -6,6 +6,7 @@ import qualified Data.Map  as M
 import qualified Data.Set as S
 import qualified Data.List.Zipper as Z
 import Control.Monad (forM)
+import Data.Maybe (fromMaybe)
 
 type Token = String
 type Tag = String
@@ -43,7 +44,7 @@ main' = do
   ls <- fmap initialLearningState readTrainingInstances
   let ruleMap = instRules ruleInstantiators ls
   let sorted = L.sortBy (\(_,a) (_,b) -> compare b a) $ M.toList ruleMap
-  forM (take 10 sorted) $ \(ts, count) -> do
+  forM (take 10 sorted) $ \(ts, count) ->
       putStrLn $ show count ++ "kpl: " ++ show ts
 
 
@@ -87,9 +88,7 @@ freqTag :: M.Map Token Tag -> Token -> Maybe Tag
 freqTag m t = M.lookup t m
 
 backupTag :: (Token -> Maybe Tag) -> Tag -> Token -> Tag
-backupTag tagger backup token = case tagger token of
-                                  Nothing -> backup
-                                  Just t  -> t
+backupTag tagger backup token = fromMaybe backup (tagger token)
 
 evalTagger :: (Token -> Maybe Tag) -> [TrainingInstance] -> (Int, Int, Int)
 evalTagger tagger = L.foldl' eval (0, 0, 0)
@@ -134,20 +133,7 @@ leftCursor :: Z.Zipper a -> Maybe a
 leftCursor z = if Z.beginp z then Nothing else Just $ Z.cursor $ Z.left z
 
 
-instRules' :: [(Z.Zipper (Tag, Tag) -> Maybe TransformationRule)] ->
-              Z.Zipper (Tag, Tag) -> S.Set TransformationRule
-instRules' fs = Z.foldlz' getRules S.empty
-  where
-    getRules acc zipper
-      | correct == incorrect = acc -- taggeri oli oikeassa, ei poimita korvaussääntöä
-      | otherwise = foldl (applyFunc zipper) acc fs
-      where
-        (correct, incorrect) = Z.cursor zipper
-        applyFunc z acc f = case f z of
-                              Nothing -> acc
-                              Just r  -> S.insert r acc
-
-instRules :: [(Z.Zipper (Tag, Tag) -> Maybe TransformationRule)] ->
+instRules :: [Z.Zipper (Tag, Tag) -> Maybe TransformationRule] ->
               Z.Zipper (Tag, Tag) -> M.Map TransformationRule Int
 instRules fs = Z.foldlz' getRules M.empty
   where
@@ -156,9 +142,9 @@ instRules fs = Z.foldlz' getRules M.empty
       | otherwise = foldl (applyFunc zipper) acc fs
       where
         (correct, incorrect) = Z.cursor zipper
-        applyFunc z acc f = case f z of
-                              Nothing -> acc
-                              Just r  -> M.insertWith (+) r 1 acc
+        applyFunc z acc' f = case f z of
+                              Nothing -> acc'
+                              Just r  -> M.insertWith (+) r 1 acc'
 
 -- "sana/sanaluokka"-listasta Zipper, jossa alkioina (oikea sanaluokka, arvattu sanaluokka)
 initialLearningState :: [TrainingInstance] -> Z.Zipper (Tag, Tag)
@@ -168,6 +154,33 @@ initialLearningState ts = Z.fromList $ map toTagPair ts
     tagFunc = backupTag (freqTag (trainFreqTagger ts)) "NN"
 
 
-
-taggingState = Z.fromList $ zip ["AT","NN","TO"] ["AT","VB","TO"]
+ruleInstantiators :: [Z.Zipper (Tag, Tag) -> Maybe TransformationRule]
 ruleInstantiators = [instNextTagRule, instPrevTagRule, instSurroundTagRule]
+
+-- Soveltaa transformaatiosääntöä
+ruleApplication :: TransformationRule -> Z.Zipper (Tag, Tag) -> Maybe Tag
+ruleApplication (NextTagRule (Replacement old new) next) z = do
+  (_, proposed) <- Z.safeCursor z
+  (_, nextProposed) <- rightCursor z
+  if nextProposed == next && proposed == old then Just new else Nothing
+
+ruleApplication (PrevTagRule (Replacement old new) prev) z = do
+  (_, proposed) <- Z.safeCursor z
+  (_, prevProposed) <- leftCursor z
+  if prevProposed == prev && proposed == old then Just new else Nothing
+
+ruleApplication (SurroundTagRule (Replacement old new) prev next) z = do
+  (_, proposed) <- Z.safeCursor z
+  (_, nextProposed) <- rightCursor z
+  (_, prevProposed) <- leftCursor z
+  if proposed == old && prevProposed == prev &&
+    nextProposed == next then Just new else Nothing
+
+scoreRule :: TransformationRule -> Z.Zipper (Tag, Tag) -> (Int, Int)
+scoreRule r = Z.foldlz' (checkRule r) (0, 0)
+  where checkRule r' (corr, incorr) z =
+          case ruleApplication r' z of
+            Nothing  -> (corr, incorr)
+            Just res -> if res == fst (Z.cursor z)
+                          then (corr+1, incorr)
+                          else (corr, incorr+1)
