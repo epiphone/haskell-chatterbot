@@ -25,8 +25,8 @@ data TransformationRule =
 
 
 -- Tarkistetaan freqTaggerin tarkkuus
-main :: IO ()
-main = do
+main' :: IO ()
+main' = do
     putStrLn "Arvioidaan..."
     freqMap <- readFreqTagMap
     testTxt <- readFile "brown-pos-test.txt"
@@ -37,15 +37,14 @@ main = do
     putStrLn $ "ei tunnistettu: " ++ show u
     putStrLn $ show (100 * fromIntegral c / fromIntegral n) ++ " %"
 
--- Selvitetään kymmenen yleisintä transformaatiosääntöä
-main' :: IO [()]
-main' = do
-  putStrLn "Selvitetään 10 yleisintä transformaatiosääntöä..."
+-- Selvitetään kymmenen parasta transformaatiosääntöä
+main :: IO [()]
+main = do
+  putStrLn "Selvitetään 10 parasta transformaatiosääntöä..."
   ls <- fmap initialLearningState readTrainingInstances
-  let ruleMap = instRules ruleInstantiators ls
-  let sorted = L.sortBy (\(_,a) (_,b) -> compare b a) $ M.toList ruleMap
-  forM (take 10 sorted) $ \(ts, count) ->
-      putStrLn $ show count ++ "kpl: " ++ show ts
+  let rules = transformationRules ruleInstantiators ls
+  forM (take 10 rules) $ \r ->
+    print r
 
 
 
@@ -146,6 +145,9 @@ instRules fs = Z.foldlz' getRules M.empty
                               Nothing -> acc'
                               Just r  -> M.insertWith (+) r 1 acc'
 
+sortRules :: M.Map TransformationRule Int -> [(TransformationRule, Int)]
+sortRules = L.sortBy (\(_,a) (_,b) -> compare b a) . M.toList
+
 -- "sana/sanaluokka"-listasta Zipper, jossa alkioina (oikea sanaluokka, arvattu sanaluokka)
 initialLearningState :: [TrainingInstance] -> Z.Zipper (Tag, Tag)
 initialLearningState ts = Z.fromList $ map toTagPair ts
@@ -157,7 +159,7 @@ initialLearningState ts = Z.fromList $ map toTagPair ts
 ruleInstantiators :: [Z.Zipper (Tag, Tag) -> Maybe TransformationRule]
 ruleInstantiators = [instNextTagRule, instPrevTagRule, instSurroundTagRule]
 
--- Soveltaa transformaatiosääntöä
+-- soveltaa transformaatiosääntöä yksittäiseen tagipariin
 ruleApplication :: TransformationRule -> Z.Zipper (Tag, Tag) -> Maybe Tag
 ruleApplication (NextTagRule (Replacement old new) next) z = do
   (_, proposed) <- Z.safeCursor z
@@ -176,11 +178,65 @@ ruleApplication (SurroundTagRule (Replacement old new) prev next) z = do
   if proposed == old && prevProposed == prev &&
     nextProposed == next then Just new else Nothing
 
-scoreRule :: TransformationRule -> Z.Zipper (Tag, Tag) -> (Int, Int)
-scoreRule r = Z.foldlz' (checkRule r) (0, 0)
+scoreRule :: TransformationRule -> Z.Zipper (Tag, Tag) -> Int
+scoreRule r z = nCorrect - nIncorrect
+  where (nCorrect, nIncorrect) = scoreRule_ r z
+
+scoreRule_ :: TransformationRule -> Z.Zipper (Tag, Tag) -> (Int, Int)
+scoreRule_ r = Z.foldlz' (checkRule r) (0, 0)
   where checkRule r' (corr, incorr) z =
           case ruleApplication r' z of
             Nothing  -> (corr, incorr)
             Just res -> if res == fst (Z.cursor z)
                           then (corr+1, incorr)
                           else (corr, incorr+1)
+
+selectRule :: [(TransformationRule, Int)] -> Z.Zipper (Tag, Tag) ->
+              (TransformationRule, Int)
+selectRule ((rule, _):rs) z = selectRule_ z rs (rule, scoreRule rule z)
+
+selectRule_ :: Z.Zipper (Tag, Tag) -> [(TransformationRule, Int)] ->
+               (TransformationRule, Int) -> (TransformationRule, Int)
+selectRule_ _ [] best = best
+selectRule_ z ((rule, ruleN):rs) best@(bestRule, bestScore)
+  | bestScore >= ruleN = best
+  | bestScore >= score = selectRule_ z rs best
+  | otherwise          = selectRule_ z rs (rule, score)
+  where score = scoreRule rule z
+
+-- soveltaa transformaatiosääntöä jokaiseen zipperin tagipariin
+--updateState :: TransformationRule -> Z.Zipper (Tag, Tag) -> Z.Zipper (Tag, Tag)
+--updateState rule z = Z.reversez $ Z.foldlz' (applyRule rule) Z.empty z
+--  where applyRule r acc z = case ruleApplication r z of
+--                              Just tag -> Z.insert (tag, tag) acc
+--                              Nothing  -> Z.insert (Z.cursor z) acc
+
+updateState :: TransformationRule -> Z.Zipper (Tag, Tag) ->
+               Z.Zipper (Tag, Tag)
+updateState r = Z.fromList . reverse . Z.foldlz' (update r) []
+    where update r xs z =
+              case ruleApplication r z of
+                Just tag -> (correct, tag):xs
+                Nothing  -> e:xs
+              where e@(correct, _) =  Z.cursor z
+
+transformationRules :: [(Z.Zipper (Tag, Tag) -> Maybe TransformationRule)] ->
+                       Z.Zipper (Tag, Tag) -> [TransformationRule]
+transformationRules [] _ = []
+transformationRules fs z = bestRule : transformationRules fs nextState
+  where (bestRule, _) = selectRule (sortRules $ instRules fs z) z
+        nextState = updateState bestRule z
+
+-- sääntöjen selvittäminen on tuhottoman hidasta, siksi nämä ovat tässä valmiina.
+-- samat säännöt selviävät main-funktiota ajamalla.
+tenBestRules :: [TransformationRule]
+tenBestRules = [NextTagRule (Replacement "TO" "IN") "AT",
+                PrevTagRule (Replacement "NN" "VB") "TO",
+                NextTagRule (Replacement "TO" "IN") "NP",
+                PrevTagRule (Replacement "VBN" "VBD") "PPS",
+                PrevTagRule (Replacement "NN" "VB") "MD",
+                NextTagRule (Replacement "TO" "IN") "PP$",
+                PrevTagRule (Replacement "VBN" "VBD") "NP",
+                PrevTagRule (Replacement "PPS" "PPO") "VB",
+                NextTagRule (Replacement "TO" "IN") "JJ",
+                NextTagRule (Replacement "TO" "IN") "NNS"]
