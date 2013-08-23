@@ -18,33 +18,52 @@ data Replacement = Replacement Tag Tag
                    deriving (Eq, Ord, Show)
 
 data TransformationRule =
-      NextTagRule Replacement Tag -- NextTagRule (Replacement a b) c = replace a with b when next tag is c
+    -- NextTagRule (Replacement A B) C = korvataan A B:llä kun seuraava tagi on C
+      NextTagRule Replacement Tag
     | PrevTagRule Replacement Tag
     | SurroundTagRule Replacement Tag Tag
       deriving (Eq, Ord, Show)
 
 
--- Tarkistetaan freqTaggerin tarkkuus
+-- tarkistetaan freqTaggerin tarkkuus (87,6 %)
 main' :: IO ()
 main' = do
     putStrLn "Arvioidaan..."
     freqMap <- readFreqTagMap
-    testTxt <- readFile "brown-pos-test.txt"
+    testTxt <- readFile "brown-pos-test.txt" -- arvioinnissa käytetään eri aineistoa
     let testTs = map toTrainingInstance $ words testTxt
-    let (n, c, u) = evalTagger (freqTag freqMap) testTs
+    let (n, c, i) = evalTagger (freqTag freqMap) testTs
     putStrLn $ "yhteensä:       " ++ show n
     putStrLn $ "oikein:         " ++ show c
-    putStrLn $ "ei tunnistettu: " ++ show u
+    putStrLn $ "ei tunnistettu: " ++ show i
     putStrLn $ show (100 * fromIntegral c / fromIntegral n) ++ " %"
 
--- Selvitetään kymmenen parasta transformaatiosääntöä
-main :: IO [()]
+-- tarkistetaan freqTaggerin + transformaatiosääntöjen tarkkuus (90,4%)
+main :: IO ()
 main = do
-  putStrLn "Selvitetään 10 parasta transformaatiosääntöä..."
+  putStrLn "Arvioidaan..."
+  freqMap <- readFreqTagMap
+  testTxt <- readFile "brown-pos-test.txt"
+  let testTs = map toTrainingInstance $ words testTxt
+  let tagged = freqTagMany freqMap (map takeToken testTs)
+  let taggedWithRules = applyRules bestRules tagged
+  let (c, i) = evalTagged testTs taggedWithRules
+  putStrLn $ "yhteensä: " ++ show (c + i)
+  putStrLn $ "oikein:   " ++ show c
+  putStrLn $ "väärin:   " ++ show i
+  putStrLn $ show (100 * fromIntegral c / fromIntegral (c + i)) ++ " %"
+
+
+-- selvitetään kymmenen parasta transformaatiosääntöä
+main'' :: IO [()]
+main'' = do
+  putStrLn "Selvitetään 20 parasta transformaatiosääntöä..."
   ls <- fmap initialLearningState readTrainingInstances
   let rules = transformationRules ruleInstantiators ls
-  forM (take 10 rules) $ \r ->
-    print r
+  forM (take 20 rules) $ \(rule, score) -> do
+    print rule
+    print score
+    putStrLn ""
 
 
 
@@ -58,6 +77,8 @@ toTrainingInstance :: String -> TrainingInstance
 toTrainingInstance s = TrainingInstance token tag
   where (token, tag) = rsplit '/' s
 
+takeToken :: TrainingInstance -> Token
+takeToken (TrainingInstance token _) = token
 
 tokenTagFreqs :: [TrainingInstance] -> M.Map Token (M.Map Tag Int)
 tokenTagFreqs = L.foldl' go M.empty
@@ -86,8 +107,16 @@ readFreqTagMap = fmap trainFreqTagger readTrainingInstances
 freqTag :: M.Map Token Tag -> Token -> Maybe Tag
 freqTag m t = M.lookup t m
 
+
 backupTag :: (Token -> Maybe Tag) -> Tag -> Token -> Tag
 backupTag tagger backup token = fromMaybe backup (tagger token)
+
+freqTagMany :: M.Map Token Tag -> [Token] -> [TrainingInstance]
+freqTagMany m ts = map tagFunc ts
+  where
+    tagFunc t = TrainingInstance t (backupTag freqTagger "NN" t)
+    freqTagger = freqTag m
+
 
 evalTagger :: (Token -> Maybe Tag) -> [TrainingInstance] -> (Int, Int, Int)
 evalTagger tagger = L.foldl' eval (0, 0, 0)
@@ -98,6 +127,12 @@ evalTagger tagger = L.foldl' eval (0, 0, 0)
                       then (n+1, c+1, u)
                       else (n+1, c, u)
         Nothing  -> (n+1, c, u+1)
+
+evalTagged :: [TrainingInstance] -> [TrainingInstance] -> (Int, Int)
+evalTagged correct proposed = foldl countHits (0, 0) (zip correct proposed)
+  where
+    countHits (c, u) ((TrainingInstance _ corr), (TrainingInstance _ prop)) =
+      if prop == corr then (c+1, u) else (c, u+1)
 
 
 -- Sääntöhommat:
@@ -204,12 +239,6 @@ selectRule_ z ((rule, ruleN):rs) best@(bestRule, bestScore)
   | otherwise          = selectRule_ z rs (rule, score)
   where score = scoreRule rule z
 
--- soveltaa transformaatiosääntöä jokaiseen zipperin tagipariin
---updateState :: TransformationRule -> Z.Zipper (Tag, Tag) -> Z.Zipper (Tag, Tag)
---updateState rule z = Z.reversez $ Z.foldlz' (applyRule rule) Z.empty z
---  where applyRule r acc z = case ruleApplication r z of
---                              Just tag -> Z.insert (tag, tag) acc
---                              Nothing  -> Z.insert (Z.cursor z) acc
 
 updateState :: TransformationRule -> Z.Zipper (Tag, Tag) ->
                Z.Zipper (Tag, Tag)
@@ -221,22 +250,39 @@ updateState r = Z.fromList . reverse . Z.foldlz' (update r) []
               where e@(correct, _) =  Z.cursor z
 
 transformationRules :: [(Z.Zipper (Tag, Tag) -> Maybe TransformationRule)] ->
-                       Z.Zipper (Tag, Tag) -> [TransformationRule]
+                       Z.Zipper (Tag, Tag) -> [(TransformationRule, Int)]
 transformationRules [] _ = []
-transformationRules fs z = bestRule : transformationRules fs nextState
-  where (bestRule, _) = selectRule (sortRules $ instRules fs z) z
+transformationRules fs z = rule : transformationRules fs nextState
+  where rule@(bestRule, score) = selectRule (sortRules $ instRules fs z) z
         nextState = updateState bestRule z
+
+applyRules :: [TransformationRule] -> [TrainingInstance]-> [TrainingInstance]
+applyRules rs ts = zipperToTs $ foldl (flip updateState) zipper rs
+  where
+    zipper = Z.fromList $ map (\(TrainingInstance _ tag) -> ("", tag)) ts
+    zipperToTs z = map (\((TrainingInstance token _), (_, tag)) ->
+                    TrainingInstance token tag) $ zip ts (Z.toList z)
 
 -- sääntöjen selvittäminen on tuhottoman hidasta, siksi nämä ovat tässä valmiina.
 -- samat säännöt selviävät main-funktiota ajamalla.
-tenBestRules :: [TransformationRule]
-tenBestRules = [NextTagRule (Replacement "TO" "IN") "AT",
-                PrevTagRule (Replacement "NN" "VB") "TO",
-                NextTagRule (Replacement "TO" "IN") "NP",
-                PrevTagRule (Replacement "VBN" "VBD") "PPS",
-                PrevTagRule (Replacement "NN" "VB") "MD",
-                NextTagRule (Replacement "TO" "IN") "PP$",
-                PrevTagRule (Replacement "VBN" "VBD") "NP",
-                PrevTagRule (Replacement "PPS" "PPO") "VB",
-                NextTagRule (Replacement "TO" "IN") "JJ",
-                NextTagRule (Replacement "TO" "IN") "NNS"]
+bestRules :: [TransformationRule]
+bestRules = [NextTagRule (Replacement "TO" "IN") "AT",
+             PrevTagRule (Replacement "NN" "VB") "TO",
+             NextTagRule (Replacement "TO" "IN") "NP",
+             PrevTagRule (Replacement "VBN" "VBD") "PPS",
+             PrevTagRule (Replacement "NN" "VB") "MD",
+             NextTagRule (Replacement "TO" "IN") "PP$",
+             PrevTagRule (Replacement "VBN" "VBD") "NP",
+             PrevTagRule (Replacement "PPS" "PPO") "VB",
+             NextTagRule (Replacement "TO" "IN") "JJ",
+             NextTagRule (Replacement "TO" "IN") "NNS",
+             NextTagRule (Replacement "TO" "IN") "CD",
+             PrevTagRule (Replacement "VBN" "VBD") "PPSS",
+             PrevTagRule (Replacement "VB" "NN") "AT",
+             NextTagRule (Replacement "TO" "IN") "PPO",
+             PrevTagRule (Replacement "NN" "VB") "PPSS",
+             PrevTagRule (Replacement "VBD" "VBN") "BE",
+             PrevTagRule (Replacement "VBD" "VBN") "HVD",
+             PrevTagRule (Replacement "PPS" "PPO") "IN",
+             SurroundTagRule (Replacement "CS" "DT") "IN" "NN",
+             PrevTagRule (Replacement "VBD" "VBN") "HV"]
