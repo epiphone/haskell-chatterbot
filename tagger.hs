@@ -1,18 +1,20 @@
 -- | POS taggauksen alkeita
 module Main where
 
-import qualified Data.List as L
-import qualified Data.Map  as M
-import qualified Data.Set as S
+import qualified Data.List        as L
 import qualified Data.List.Zipper as Z
-import Control.Monad (forM)
-import Data.Maybe (fromMaybe)
+import qualified Data.Map         as M
+import           Control.Monad    (forM, forever)
+import           Data.Maybe       (fromMaybe)
+import TagSimplifier (simplifyTag)
 
 type Token = String
 type Tag = String
 
 data TrainingInstance = TrainingInstance Token Tag
-                        deriving Show
+
+instance Show TrainingInstance where
+  show (TrainingInstance token tag) = token ++ "/" ++ tag
 
 data Replacement = Replacement Tag Tag
                    deriving (Eq, Ord, Show)
@@ -25,36 +27,46 @@ data TransformationRule =
       deriving (Eq, Ord, Show)
 
 
--- tarkistetaan freqTaggerin tarkkuus (87,6 %)
-main' :: IO ()
+-- tulostaa annetun syötteen sanaluokkineen
+main' :: IO [()]
 main' = do
-    putStrLn "Arvioidaan..."
-    freqMap <- readFreqTagMap
-    testTxt <- readFile "brown-pos-test.txt" -- arvioinnissa käytetään eri aineistoa
-    let testTs = map toTrainingInstance $ words testTxt
-    let (n, c, i) = evalTagger (freqTag freqMap) testTs
-    putStrLn $ "yhteensä:       " ++ show n
-    putStrLn $ "oikein:         " ++ show c
-    putStrLn $ "ei tunnistettu: " ++ show i
-    putStrLn $ show (100 * fromIntegral c / fromIntegral n) ++ " %"
+  freqMap <- readFreqTagMap
+  putStrLn "Syötä lause"
+  forever (tagInput freqMap)
 
--- tarkistetaan freqTaggerin + transformaatiosääntöjen tarkkuus (90,4%)
-main :: IO ()
+tagInput :: M.Map Token Tag -> IO ()
+tagInput m = do
+  tokens <- fmap words getLine
+  let tagged = ruleTagSentence m tokens
+  let simplified = map simplifyInstance tagged
+  putStrLn $ unwords (map show simplified)
+
+simplifyInstance :: TrainingInstance -> TrainingInstance
+simplifyInstance (TrainingInstance token tag) =
+  TrainingInstance token (simplifyTag tag)
+
+-- arvioidaan POS-taggereiden tarkkuutta.
+-- freqTagger                          88,5%
+-- freqTagger + transformaatiosäännöt  90,4%
+main :: IO [()]
 main = do
   putStrLn "Arvioidaan..."
   freqMap <- readFreqTagMap
   testTxt <- readFile "brown-pos-test.txt"
   let testTs = map toTrainingInstance $ words testTxt
-  let tagged = freqTagMany freqMap (map takeToken testTs)
-  let taggedWithRules = applyRules bestRules tagged
-  let (c, i) = evalTagged testTs taggedWithRules
-  putStrLn $ "yhteensä: " ++ show (c + i)
-  putStrLn $ "oikein:   " ++ show c
-  putStrLn $ "väärin:   " ++ show i
-  putStrLn $ show (100 * fromIntegral c / fromIntegral (c + i)) ++ " %"
+  let taggedPlain = freqTagMany freqMap (map takeToken testTs)
+  let taggedWithRules = applyRules bestRules taggedPlain
+  let results = map (evalTagged testTs) [taggedPlain, taggedWithRules]
+  forM (zip ["freq", "rules"] results) $ \(name, (c, i)) -> do
+    putStrLn $ "\n" ++ name ++ ":"
+    putStrLn $ "yhteensä: " ++ show (c + i)
+    putStrLn $ "oikein:   " ++ show c
+    putStrLn $ "väärin:   " ++ show i
+    putStrLn . take 5 $ show (100 * fromIntegral c / fromIntegral (c+i)) ++ "%"
 
 
--- selvitetään kymmenen parasta transformaatiosääntöä
+
+-- selvitetään parhaat transformaatiosäännöt
 main'' :: IO [()]
 main'' = do
   putStrLn "Selvitetään 20 parasta transformaatiosääntöä..."
@@ -112,11 +124,15 @@ backupTag :: (Token -> Maybe Tag) -> Tag -> Token -> Tag
 backupTag tagger backup token = fromMaybe backup (tagger token)
 
 freqTagMany :: M.Map Token Tag -> [Token] -> [TrainingInstance]
-freqTagMany m ts = map tagFunc ts
+freqTagMany m = map tagFunc
   where
     tagFunc t = TrainingInstance t (backupTag freqTagger "NN" t)
     freqTagger = freqTag m
 
+ruleTagSentence :: M.Map Token Tag -> [Token] -> [TrainingInstance]
+ruleTagSentence m ts = applyRules bestRules freqTagged
+  where
+    freqTagged = freqTagMany m ts
 
 evalTagger :: (Token -> Maybe Tag) -> [TrainingInstance] -> (Int, Int, Int)
 evalTagger tagger = L.foldl' eval (0, 0, 0)
@@ -131,7 +147,7 @@ evalTagger tagger = L.foldl' eval (0, 0, 0)
 evalTagged :: [TrainingInstance] -> [TrainingInstance] -> (Int, Int)
 evalTagged correct proposed = foldl countHits (0, 0) (zip correct proposed)
   where
-    countHits (c, u) ((TrainingInstance _ corr), (TrainingInstance _ prop)) =
+    countHits (c, u) (TrainingInstance _ corr, TrainingInstance _ prop) =
       if prop == corr then (c+1, u) else (c, u+1)
 
 
@@ -233,7 +249,7 @@ selectRule ((rule, _):rs) z = selectRule_ z rs (rule, scoreRule rule z)
 selectRule_ :: Z.Zipper (Tag, Tag) -> [(TransformationRule, Int)] ->
                (TransformationRule, Int) -> (TransformationRule, Int)
 selectRule_ _ [] best = best
-selectRule_ z ((rule, ruleN):rs) best@(bestRule, bestScore)
+selectRule_ z ((rule, ruleN):rs) best@(_, bestScore)
   | bestScore >= ruleN = best
   | bestScore >= score = selectRule_ z rs best
   | otherwise          = selectRule_ z rs (rule, score)
@@ -242,29 +258,29 @@ selectRule_ z ((rule, ruleN):rs) best@(bestRule, bestScore)
 
 updateState :: TransformationRule -> Z.Zipper (Tag, Tag) ->
                Z.Zipper (Tag, Tag)
-updateState r = Z.fromList . reverse . Z.foldlz' (update r) []
+updateState rule = Z.fromList . reverse . Z.foldlz' (update rule) []
     where update r xs z =
               case ruleApplication r z of
                 Just tag -> (correct, tag):xs
                 Nothing  -> e:xs
               where e@(correct, _) =  Z.cursor z
 
-transformationRules :: [(Z.Zipper (Tag, Tag) -> Maybe TransformationRule)] ->
+transformationRules :: [Z.Zipper (Tag, Tag) -> Maybe TransformationRule] ->
                        Z.Zipper (Tag, Tag) -> [(TransformationRule, Int)]
 transformationRules [] _ = []
 transformationRules fs z = rule : transformationRules fs nextState
-  where rule@(bestRule, score) = selectRule (sortRules $ instRules fs z) z
+  where rule@(bestRule, _) = selectRule (sortRules $ instRules fs z) z
         nextState = updateState bestRule z
 
 applyRules :: [TransformationRule] -> [TrainingInstance]-> [TrainingInstance]
 applyRules rs ts = zipperToTs $ foldl (flip updateState) zipper rs
   where
     zipper = Z.fromList $ map (\(TrainingInstance _ tag) -> ("", tag)) ts
-    zipperToTs z = map (\((TrainingInstance token _), (_, tag)) ->
+    zipperToTs z = map (\(TrainingInstance token _, (_, tag)) ->
                     TrainingInstance token tag) $ zip ts (Z.toList z)
 
 -- sääntöjen selvittäminen on tuhottoman hidasta, siksi nämä ovat tässä valmiina.
--- samat säännöt selviävät main-funktiota ajamalla.
+-- samat säännöt selviävät main''-funktiota ajamalla.
 bestRules :: [TransformationRule]
 bestRules = [NextTagRule (Replacement "TO" "IN") "AT",
              PrevTagRule (Replacement "NN" "VB") "TO",
