@@ -44,19 +44,22 @@ WH  wh determiner   who, which, when, what, where, how
 X   (UH, FW, EX, NUM) catch-all
 
 main Sentence Types:
-S   -> NP VP              Declaratives: A plane left.
+S   -> NP                 A green plane
 S   -> VP                 Imperatives: Leave! Show the lowest fare.
+S   -> NP VP              Declaratives: A plane left.
 
 yes-no-questions:
-S   -> VQ NP               Does she? Would You?
-S   -> VQ NP VP            Did the plane leave?
-S   -> VQ NP VP PP         Would you go there in the morning? (V turha, koska verb-luokkaa ei ikinä)
+S   -> V NP               Does she? Would You?
+S   -> V NP VP            Did the plane leave?
 
 wh-questions:
 S   -> WH aux NP          What is your name?
 S   -> WH aux NP VP       How much does it cost?
 S   -> WH NP VP           WH-subject Questions: What airlines fly from Burbank to Denver?
 S   -> WH NP aux NP VP    WH non-subject Questions: what flight do you have from Burbank?
+
+S   -> WH S               Which car is the fastest?
+S   -> WH aux S           Why does
 
 WH  -> wh | wh det         How, how many
 
@@ -66,6 +69,7 @@ NOM -> n
 NOM -> n NOM
 NOM -> pro
 NOM -> pro NOM
+NOM -> adj
 NOM -> adj NOM
 
 VP  -> V                 prefer

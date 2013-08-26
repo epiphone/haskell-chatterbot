@@ -1,27 +1,66 @@
 module Parser where
 
+--import Control.Monad
+
+--newtype Parser a = Parser (String -> [(a, String)])
+
+--parse :: Parser a -> String -> [(a, String)]
+--parse (Parser p) = p
+
+--instance Monad Parser where
+--    return a = Parser (\cs -> [(a,cs)])
+--    p >>= f = Parser (\cs -> concat [parse (f a) cs' | (a,cs') <- parse p cs])
+
+--instance MonadPlus Parser where
+--    p `mplus` q = Parser (\cs -> parse p cs ++ parse q cs)
+--    mzero = Parser (const [])
+
+--(+++) :: Parser a -> Parser a -> Parser a
+--p +++ q = Parser (\cs -> case parse (p `mplus` q) cs of
+--                           [] -> []
+--                           (x:_) -> [x])
+
 data Tree nt t = Leaf t | Node nt [Tree nt t]
 
---type Grammar c t = (Set c, c, t -> Set c, Set (Production c))
+data S = Declarative NP VP
+       | Descriptive NP
+       | Imperative VP
+       | Interrogative V NP VP
 
-type Production = (String, [String])
+data NP = SimpleNP NOM
+        | DetNP Det NOM
 
---data Nonterminal = S | WH | NP | NOM | VP | V | PP | VQ
---data Terminal = Aux | Verb | P | N | Adv | Adj | Wh | Det
+data NOM = SimpleNOM Noun
+         | ComplexNOM Noun NOM
+         | ProNOM Pro
+         | ComplexProNOM Pro NOM
+         | SimpleAdjNOM Adj
+         | ComplexAdjNOM Adj NOM
 
---data S = NP VP | VP | VQ NP | VQ NP VP | VQ NP VP PP | WH Aux NP | WH Aux NP VP | WH NP VP | WH NP Aux NP VP
+data VP = SimpleVP V
+        | NounVP V NP
+        | PreAdvVP Adv VP
+        | PostAdvVP VP Adv
 
---data WH =  Wh | Wh Det
-
---data NP = NOM | Det NOM
-
---data NOM = N | N NOM | Pro | Pro NOM | Adj NOM
-
---data VP = V | V NP | V NP PP | VP PP | VP Adv | Adv VP | V To VP
-
---data V = Verb | Aux
-
---data PP = P NP
+data V = AuxV Aux | OtherV Verb
 
 
-type State = (Production, Int, Int)
+type Det = String
+type Noun = String
+type Pro = String
+type Adj = String
+type Adv = String
+type Aux = String
+type Verb = String
+
+{-
+1. Jokaista välikettä X kohden funktio fX, joka ottaa parametrin X:n produktiosta
+
+2. Jos X:llä on vaihtoehtoisia produktioita, funktiolla fX on versio jokaisesta
+   vaihtoehdosta
+
+3. Jos X:llä on produktio johon sisältyy välike Y, niin
+   a) fX:n tulee kutsua funktiota fY, joka käsittelee Y:n kuvaamaa dataa, ja
+   b) jokainen kutsu fX:stä fY:hyn vie fY:hyn dataa jonka fX sai parametriksi, ainakin sen
+      osan mitä Y kuvaa.
+-}
