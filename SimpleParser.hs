@@ -19,14 +19,9 @@ module SimpleParser where
 import Control.Monad (MonadPlus, mzero, mplus)
 
 
-newtype Parser a = Parser ([Tag] -> [(a, [Tag])])
+newtype Parser a = Parser ([(Token, Tag)] -> [(a, [(Token, Tag)])])
 
-item :: Parser Tag
-item = Parser (\cs -> case cs of
-                        [] -> []
-                        (c:cs) -> [(c,cs)])
-
-parse :: Parser a -> [Tag] -> [(a, [Tag])]
+parse :: Parser a -> [(Token, Tag)] -> [(a, [(Token, Tag)])]
 parse (Parser p) = p
 
 instance Monad Parser where
@@ -43,26 +38,40 @@ p +++ q = Parser (\cs -> case parse (p `mplus` q) cs of
                            (x:xs) -> [x])
 
 
-data S = Descriptive NP | Declarative NP VP
-data NP = Determiner Det NOM | Nondeterminer NOM
-data NOM = NounNOM Noun NOM | NOM Noun
-data VP = NounVP Verb NP | PrepVP Verb PP | VP Verb
-data PP = NounPP Pre NP
+data Noun = Noun String deriving (Show)
+data Verb = Verb String deriving (Show)
+data Det = Det String deriving (Show)
+data Pre = Pre String deriving (Show)
 
-type Noun = String
-type Verb = String
-type Det = String
-type Pre = String
+data S = Declarative NP VP | Descriptive NP deriving Show
+data NP = DetNP Det NOM | NonDetNP NOM deriving Show
+data NOM = NounNOM Noun NOM | SimpleNOM Noun deriving Show
+data VP = NounVP Verb NP | PrepVP Verb PP | SimpleVP Verb deriving Show
+data PP = NounPP Pre NP deriving Show
 
+type Token = String
 type Tag = String
+
 
 data Tree = Branch String [Tree] |Leaf String deriving Show
 
-sat :: (Tag -> Bool) -> Parser Tag
+item :: Parser (Token, Tag)
+item = Parser (\cs -> case cs of
+                        [] -> []
+                        (c:cs) -> [(c,cs)])
+
+sat :: ((Token, Tag) -> Bool) -> Parser (Token, Tag)
 sat p = do {t <- item; if p t then return t else mzero}
 
-tag :: Tag -> Parser Tag
-tag t = sat (== t)
+tag :: Tag -> Parser (Token, Tag)
+tag t = sat (\(tok, tag) -> tag == t)
+
+noun, verb, det, pre :: Parser (Token, Tag)
+noun = tag "Noun"
+verb = tag "Verb"
+det = tag "Det"
+pre = tag "Pre"
+
 
 many :: Parser a -> Parser [a]
 many p = many1 p +++ return []
@@ -77,24 +86,25 @@ chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
 p `chainl1` op = do {a <- p; rest a}
     where rest a = do {f <- op; b <- p; rest (f a b)} +++ return a
 
-s = do {a <- np; b <- vp; return (Branch "S" [a, b])} +++
-    do {a <- np; return (Branch "S" [a])}
+s :: Parser S
+s = do {a <- np; b <- vp; return (Declarative a b)} +++
+    do {a <- np; return (Descriptive a)}
 
-np = do {tag "Det"; a <- nom; return (Branch "NP" [Leaf "Det", a])} +++
-     do {a <- nom; return (Branch "NP" [a])}
+np :: Parser NP
+np = do {(t, _) <- det; a <- nom; return (DetNP (Det t) a)} +++
+     do {a <- nom; return (NonDetNP a)}
 
-nom = do {tag "Noun"; a <- nom; return (Branch "NOM" [Leaf "Noun", a])} +++
-      do {a <- tag "Noun"; return (Branch "NOM" [Leaf "Noun"])}
+nom :: Parser NOM
+nom = do {(t, _) <- noun; b <- nom; return (NounNOM (Noun t) b)} +++
+      do {(t, _) <- noun; return (SimpleNOM (Noun t))}
 
-vp = do {tag "Verb"; a <- np; return (Branch "VP" [Leaf "Verb", a])} +++
-     do {tag "Verb"; a <- pp; return (Branch "VP" [Leaf "Verb", a])} +++
-     do {tag "Verb"; return (Branch "VP" [Leaf "Verb"])}
+vp :: Parser VP
+vp = do {(t, _) <- verb; a <- np; return (NounVP (Verb t) a)} +++
+     do {(t, _) <- verb; a <- pp; return (PrepVP (Verb t) a)} +++
+     do {(t, _) <- verb; return (SimpleVP (Verb t))}
 
-pp = do {tag "Pre"; a <- np; return (Branch "PP" [Leaf "Pre", a])}
+pp :: Parser PP
+pp = do {(t, _) <- pre; a <- np; return (NounPP (Pre t) a)}
 
-
-
-tree = np +++ nom
-tree2 = np `mplus` nom
 
 
