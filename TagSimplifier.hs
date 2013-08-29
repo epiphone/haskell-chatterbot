@@ -3,7 +3,7 @@
     tagin.
 
     Brown Corpus käyttää 82 tagia (http://icame.uib.no/brown/bcm.html),
-    jotka yksinkertaistetaan johonkin seuraavista 12 tagista:
+    jotka yksinkertaistetaan johonkin seuraavista 11 tagista:
 
     - ADJ adjektiivi                 new, good, high, special, big, local
     - ADV adverbi                    really, already, still, early, now
@@ -15,7 +15,7 @@
     - TO  'to'                       to
     - V   verbi                      get, make, see, run
     - WH  wh-kysymyssana             who, which, when, what, where, how
-    - X   muut: mm. konjuktiot, interjektiot, numerot, vieraskieliset sanat
+    - X   muut: mm. konjuktiot, interjektiot, vieraskieliset sanat
 -}
 
 module TagSimplifier (simplifyTag) where

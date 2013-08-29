@@ -1,4 +1,8 @@
--- | POS taggauksen alkeita
+{-
+    Luokittelee englanninkielisiä sanoja sanaluokittain.
+
+    Pohjana käytetty NLPWP-kirjaa (http://nlpwp.org/book/)
+-}
 module Tagger where
 
 import qualified Data.List        as L
@@ -20,36 +24,16 @@ instance Show TrainingInstance where
 data Replacement = Replacement Tag Tag
                    deriving (Eq, Ord, Show)
 
-data TransformationRule =
-    -- NextTagRule (Replacement A B) C = korvataan A B:llä kun seuraava tagi on C
-      NextTagRule Replacement Tag
-    | PrevTagRule Replacement Tag
-    | SurroundTagRule Replacement Tag Tag
-      deriving (Eq, Ord, Show)
+-- esim. NextTagRule (Replacement A B) C =
+-- korvataan A B:llä kun seuraava tagi on C
+data TransformationRule = NextTagRule Replacement Tag
+                        | PrevTagRule Replacement Tag
+                        | SurroundTagRule Replacement Tag Tag
+                          deriving (Eq, Ord, Show)
 
-
--- tulostaa annetun syötteen sanaluokkineen
-main' :: IO [()]
-main' = do
-  freqMap <- readFreqTagMap
-  putStrLn "Syötä lause"
-  forever (tagInput freqMap)
-
-tagInput :: M.Map Token Tag -> IO ()
-tagInput m = do
-  tokens <- fmap words getLine
-  let tagged = ruleTagSentence m tokens
-  let simplified = map simplifyInstance tagged
-  putStrLn $ unwords (map show simplified)
-
-simplifyInstance :: TrainingInstance -> TrainingInstance
-simplifyInstance (TrainingInstance token tag) =
-  TrainingInstance token (simplifyTag tag)
-
--- arvioidaan POS-taggereiden tarkkuutta.
+-- arvioidaan sanaluokittelijan tarkkuutta
 -- freqTagger                          88,5%
 -- freqTagger + transformaatiosäännöt  90,4%
-main :: IO [()]
 main = do
   putStrLn "Arvioidaan..."
   freqMap <- readFreqTagMap
