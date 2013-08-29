@@ -1,11 +1,12 @@
 -- | POS taggauksen alkeita
-module Main where
+module Tagger where
 
 import qualified Data.List        as L
 import qualified Data.List.Zipper as Z
 import qualified Data.Map         as M
 import           Control.Monad    (forM, forever)
 import           Data.Maybe       (fromMaybe)
+import Data.Char (toLower)
 import TagSimplifier (simplifyTag)
 
 type Token = String
@@ -86,7 +87,7 @@ rsplit sep xs = let (l, r, _) = foldr go ([], [], False) xs in (l, r)
     go x (l, r, False) = if x == sep then (l, r, True) else (l, x:r, False)
 
 toTrainingInstance :: String -> TrainingInstance
-toTrainingInstance s = TrainingInstance token tag
+toTrainingInstance s = TrainingInstance (map toLower token) tag
   where (token, tag) = rsplit '/' s
 
 takeToken :: TrainingInstance -> Token

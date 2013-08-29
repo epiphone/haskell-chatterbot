@@ -32,7 +32,7 @@ mapping2 = M.fromList [
     ("j", "ADJ"), ("p", "PRO"), ("m", "AUX"), ("q", "DET"), ("w", "WH"),
     ("r", "ADV"), ("i", "P"), ("u", "X"), ("e", "X"), ("o", "DET"),
     ("b", "AUX"), ("h", "AUX"), ("f", "X"), ("a", "DET"), ("t", "TO"),
-    ("cc", "X"), ("cs", "X"), ("cd", "DET"), ("do", "V"), ("dt", "DET"),
+    ("cc", "X"), ("cs", "X"), ("cd", "DET"), ("do", "AUX"), ("dt", "DET"),
     ("nn", "N"), ("nr", "N"), ("np", "N"), ("nc", "N"), ("v", "V")]
 
 
