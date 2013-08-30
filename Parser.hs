@@ -4,9 +4,10 @@
     S   -> NP                 the green dog
          | VP                 take it with you
          | NP VP              a green dog jumped on the roof
+         | Aux Pro NP         are you a computer? was she a computer?
          | Aux NP VP          did the green dog jump on the roof?
          | WH VP              what is your name?
-         | WH NP VP           which name is the best?
+         | WH NP VP           which student wrote the program?
          | WH Aux NP VP       what do you mean?
          | WH NP Aux NP       which car is the best?
          | WH NP Aux NP VP    what flights do you have?
@@ -81,6 +82,7 @@ data To   = To String deriving (Show, Eq)
 data S = Descriptive NP
        | Imperative VP
        | Declarative NP VP
+       | SimpleInterrogative Aux Pro NP
        | Interrogative Aux NP VP
        | SimpleWhQuestion WH VP
        | WhQuestion WH Aux NP VP
@@ -165,6 +167,7 @@ s = do {a <- wh; b <- np; c <- auxT; d <- np; e <- vp; return (WhNonSubject a b 
     do {a <- wh; b <- auxT; c <- np; d <- vp; return (WhQuestion a (Aux b) c d)} +++
     do {a <- wh; b <- np; c <- vp; return (WhSubject a b c)} +++
     do {a <- wh; b <- vp; return (SimpleWhQuestion a b)} +++
+    do {a <- auxT; b <- proT; c <- np; return (SimpleInterrogative (Aux a) (Pro b) c)} +++
     do {a <- auxT; b <- np; c <- vp; return (Interrogative (Aux a) b c)} +++
     do {a <- np; b <- vp; return (Declarative a b)} +++
     do {a <- vp; return (Imperative a)} +++

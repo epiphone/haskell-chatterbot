@@ -30,7 +30,7 @@ talk m = do
     Nothing   -> putStrLn "I don't understand"
     Just tree -> do
         print tree
-        putStrLn $ answer tree
+        putStrLn $ answer tree ++ "\n"
 
 
 tagInput :: M.Map Token Tag -> IO [TrainingInstance]
