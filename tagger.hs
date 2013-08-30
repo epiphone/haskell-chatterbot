@@ -52,8 +52,8 @@ main = do
 
 
 -- selvitetään parhaat transformaatiosäännöt
-main'' :: IO [()]
-main'' = do
+main' :: IO [()]
+main' = do
   putStrLn "Selvitetään 20 parasta transformaatiosääntöä..."
   ls <- fmap initialLearningState readTrainingInstances
   let rules = transformationRules ruleInstantiators ls
@@ -265,7 +265,7 @@ applyRules rs ts = zipperToTs $ foldl (flip updateState) zipper rs
                     TrainingInstance token tag) $ zip ts (Z.toList z)
 
 -- sääntöjen selvittäminen on tuhottoman hidasta, siksi nämä ovat tässä valmiina.
--- samat säännöt selviävät main''-funktiota ajamalla.
+-- samat säännöt selviävät main-funktiota ajamalla.
 bestRules :: [TransformationRule]
 bestRules = [NextTagRule (Replacement "TO" "IN") "AT",
              PrevTagRule (Replacement "NN" "VB") "TO",

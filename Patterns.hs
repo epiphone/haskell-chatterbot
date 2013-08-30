@@ -9,6 +9,7 @@ import qualified Data.Map as M
 answer :: S -> String
 answer (Descriptive np) = "Tell me more about " ++ pluckNP np
 
+answer (Imperative (NounVP (AuxQW _) _)) = "What do you think?"
 answer (Imperative (SimpleVP (VerbQW (Verb v)))) = "Why should I " ++ v ++ "?"
 answer (Imperative (NounVP (VerbQW (Verb v)) np)) = "Why should I " ++ v ++ " " ++ pluckNP np ++ "?"
 answer (Imperative _) = "Why would anyone do that?"
@@ -16,7 +17,7 @@ answer (Imperative _) = "Why would anyone do that?"
 answer (Declarative np@(DetNP _ _) vp) = "What else do you know about " ++ pluckNP np ++ "?"
 answer (Declarative np (NounVP (AuxQW (Aux aux)) vnp))
   | aux == "has" = "Maybe you have " ++ pluckNP vnp
-  | aux == "is"  = "Maybe you are " ++ pluckNP vnp
+  | aux `elem` ["is", "are", "am"] = "Maybe you are " ++ pluckNP vnp
   | otherwise = "Fascinating. Tell me more."
 answer (Declarative np _)
   | sub == "i" = "That doesn't sound like me. Are you sure about that?"
@@ -30,7 +31,11 @@ answer (SimpleInterrogative (Aux aux) (Pro pro) np)
   | otherwise = "I'm certain that " ++ pro ++ " " ++ aux ++ " " ++ obj ++ "."
   where obj = pluckNP np
 
-answer (Interrogative (Aux aux) np _) = pluckNP np ++ " sure " ++ aux ++ ". What about it?"
+answer (Interrogative (Aux aux) np _)
+  | aux == "am" = sub ++ " sure are. But why?"
+  | aux == "are" = sub ++ " sure am. Are you?"
+  | otherwise = sub ++ " sure " ++ aux ++ ". What about it?"
+  where sub = pluckNP np
 
 answer (SimpleWhQuestion (SimpleWH (Wh wh)) (NounVP (AuxQW (Aux aux)) np))
   | sub == "i" = "That's personal."

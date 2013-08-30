@@ -1,1 +1,5 @@
-Haskell chatbot - Work in progress
+## chatterbot
+
+    cabal install ListZipper
+    ghc main.hs
+    ./main (-v)

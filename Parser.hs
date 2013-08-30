@@ -4,7 +4,7 @@
     S   -> NP                 the green dog
          | VP                 take it with you
          | NP VP              a green dog jumped on the roof
-         | Aux Pro NP         are you a computer? was she a computer?
+         | Aux Pro ONP         are you a computer? was she a computer?
          | Aux NP VP          did the green dog jump on the roof?
          | WH VP              what is your name?
          | WH NP VP           which student wrote the program?
@@ -118,7 +118,7 @@ data WH = SimpleWH Wh
         | PreWH Wh Pre deriving (Show, Eq)
 
 
--- apufunktioita TODO poista turhat
+-- apufunktioita:
 
 item :: Parser (Token, Tag)
 item = Parser (\cs -> case cs of
@@ -130,19 +130,6 @@ sat p = do {t <- item; if p t then return t else mzero}
 
 tag :: Tag -> Parser Token
 tag t = fmap fst $ sat (\(tok, tag) -> tag == t)
-
-many :: Parser a -> Parser [a]
-many p = many1 p +++ return []
-
-many1 :: Parser a -> Parser [a]
-many1 p = do {a <- p; as <- many p; return (a:as)}
-
-chainl :: Parser a -> Parser (a -> a -> a) -> a -> Parser a
-chainl p op a = (p `chainl1` op) +++ return a
-
-chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
-p `chainl1` op = do {a <- p; rest a}
-    where rest a = do {f <- op; b <- p; rest (f a b)} +++ return a
 
 
 -- päätesymbolit:

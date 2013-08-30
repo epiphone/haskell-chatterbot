@@ -13,24 +13,30 @@ import Tagger (TrainingInstance(TrainingInstance), Token, Tag, readFreqTagMap, r
 import TagSimplifier (simplifyTag)
 import Patterns (answer)
 
+import System.Environment (getArgs)
 import           Control.Monad    (forever)
 import Data.Char (isAlphaNum, toLower)
 import qualified Data.Map as M
 
 main = do
+  args <- getArgs
+  let verbose = length args > 0 && head args == "-v"
   putStrLn "Greetings puny human"
   freqMap <- readFreqTagMap
-  forever (talk freqMap)
+  forever (talk freqMap verbose)
 
-talk :: M.Map Token Tag -> IO ()
-talk m = do
+talk :: M.Map Token Tag -> Bool -> IO ()
+talk m v = do
   tagged <- tagInput m
-  putStrLn $ unwords (map show tagged) -- TODO tulosta vain jos verbose
+  putStrLn $ unwords (map show tagged)
   case parseSentence (map toTokenTuple tagged) of
-    Nothing   -> putStrLn "I don't understand"
+    Nothing   -> putStrLn "I don't understand\n"
     Just tree -> do
-        print tree
-        putStrLn $ answer tree ++ "\n"
+      case v of
+        False -> putStrLn $ answer tree ++ "\n"
+        True  -> do
+          print tree
+          putStrLn $ answer tree ++ "\n"
 
 
 tagInput :: M.Map Token Tag -> IO [TrainingInstance]
