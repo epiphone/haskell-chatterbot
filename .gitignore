@@ -1,5 +1,6 @@
 /haddock
 
+*.txt
 *.exe
 *.hi
 *.o
