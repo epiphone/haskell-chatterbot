@@ -39,9 +39,8 @@
 
 module Parser where
 
-import Control.Monad (MonadPlus, mzero, mplus)
-import Data.Functor
-import Tagger (Token, Tag)
+import           Control.Monad (MonadPlus, mplus, mzero)
+import           Tagger        (Tag, Token)
 
 
 newtype Parser a = Parser ([(Token, Tag)] -> [(a, [(Token, Tag)])])
@@ -60,12 +59,12 @@ instance Monad Parser where
 
 instance MonadPlus Parser where
     p `mplus` q = Parser (\cs -> parse p cs ++ parse q cs)
-    mzero = Parser (\cs -> [])
+    mzero = Parser (const [])
 
 (+++) :: Parser a -> Parser a -> Parser a
 p +++ q = Parser (\cs -> case parse (p `mplus` q) cs of
                            [] -> []
-                           (x:xs) -> [x])
+                           (x:_) -> [x])
 
 
 data Noun = Noun String deriving (Show, Eq)
@@ -123,13 +122,13 @@ data WH = SimpleWH Wh
 item :: Parser (Token, Tag)
 item = Parser (\cs -> case cs of
                         [] -> []
-                        (c:cs) -> [(c,cs)])
+                        (x:xs) -> [(x, xs)])
 
 sat :: ((Token, Tag) -> Bool) -> Parser (Token, Tag)
 sat p = do {t <- item; if p t then return t else mzero}
 
 tag :: Tag -> Parser Token
-tag t = fmap fst $ sat (\(tok, tag) -> tag == t)
+tag t = fmap fst $ sat (\(_, tag') -> tag' == t)
 
 
 -- päätesymbolit:

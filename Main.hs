@@ -8,19 +8,21 @@
 
 module Main where
 
-import Parser (parseSentence)
-import Tagger (TrainingInstance(TrainingInstance), Token, Tag, readFreqTagMap, ruleTagSentence)
-import TagSimplifier (simplifyTag)
-import Patterns (answer)
+import           Parser             (parseSentence)
+import           Patterns           (answer)
+import           Tagger             (Tag, Token,
+                                     TrainingInstance (TrainingInstance),
+                                     readFreqTagMap, ruleTagSentence)
+import           TagSimplifier      (simplifyTag)
+import           Control.Monad      (forever)
+import           Data.Char          (isAlphaNum, toLower)
+import qualified Data.Map           as M
+import           System.Environment (getArgs)
 
-import System.Environment (getArgs)
-import           Control.Monad    (forever)
-import Data.Char (isAlphaNum, toLower)
-import qualified Data.Map as M
-
+main :: IO a
 main = do
   args <- getArgs
-  let verbose = length args > 0 && head args == "-v"
+  let verbose = not (null args) && head args == "-v"
   putStrLn "Greetings puny human"
   freqMap <- readFreqTagMap
   forever (talk freqMap verbose)
@@ -28,15 +30,16 @@ main = do
 talk :: M.Map Token Tag -> Bool -> IO ()
 talk m v = do
   tagged <- tagInput m
-  putStrLn $ unwords (map show tagged)
   case parseSentence (map toTokenTuple tagged) of
-    Nothing   -> putStrLn "I don't understand\n"
-    Just tree -> do
-      case v of
-        False -> putStrLn $ answer tree ++ "\n"
-        True  -> do
-          print tree
-          putStrLn $ answer tree ++ "\n"
+    Nothing   -> do
+                  putStrLn $ unwords (map show tagged)
+                  putStrLn "I don't understand\n"
+    Just tree -> if v then
+                   (do
+                     putStrLn $ unwords (map show tagged)
+                     print tree
+                     putStrLn $ answer tree ++ "\n")
+                 else putStrLn $ answer tree ++ "\n"
 
 
 tagInput :: M.Map Token Tag -> IO [TrainingInstance]

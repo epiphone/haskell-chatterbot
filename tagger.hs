@@ -5,13 +5,12 @@
 -}
 module Tagger where
 
+import           Control.Monad    (forM)
+import           Data.Char        (toLower)
 import qualified Data.List        as L
 import qualified Data.List.Zipper as Z
 import qualified Data.Map         as M
-import           Control.Monad    (forM, forever)
 import           Data.Maybe       (fromMaybe)
-import Data.Char (toLower)
-import TagSimplifier (simplifyTag)
 
 type Token = String
 type Tag = String
@@ -34,6 +33,7 @@ data TransformationRule = NextTagRule Replacement Tag
 -- arvioidaan sanaluokittelijan tarkkuutta
 -- freqTagger                          88,5%
 -- freqTagger + transformaatiosäännöt  90,4%
+main :: IO [()]
 main = do
   putStrLn "Arvioidaan..."
   freqMap <- readFreqTagMap
@@ -62,6 +62,13 @@ main' = do
     print score
     putStrLn ""
 
+
+readTrainingInstances :: IO [TrainingInstance]
+readTrainingInstances =
+    fmap (map toTrainingInstance . words) $ readFile "brown-pos-train.txt"
+
+readFreqTagMap :: IO (M.Map Token Tag)
+readFreqTagMap = fmap trainFreqTagger readTrainingInstances
 
 
 rsplit :: (Eq a) => a -> [a] -> ([a], [a])
@@ -93,17 +100,8 @@ tokenMostFreqTag = M.map (fst . M.foldlWithKey go ("", 0))
 trainFreqTagger :: [TrainingInstance] -> M.Map Token Tag
 trainFreqTagger = tokenMostFreqTag . tokenTagFreqs
 
-
-readTrainingInstances :: IO [TrainingInstance]
-readTrainingInstances =
-    fmap (map toTrainingInstance . words) $ readFile "brown-pos-train.txt"
-
-readFreqTagMap :: IO (M.Map Token Tag)
-readFreqTagMap = fmap trainFreqTagger readTrainingInstances
-
 freqTag :: M.Map Token Tag -> Token -> Maybe Tag
 freqTag m t = M.lookup t m
-
 
 backupTag :: (Token -> Maybe Tag) -> Tag -> Token -> Tag
 backupTag tagger backup token = fromMaybe backup (tagger token)

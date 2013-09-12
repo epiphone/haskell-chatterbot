@@ -3,8 +3,8 @@
 -}
 module Patterns where
 
-import Parser
 import qualified Data.Map as M
+import           Parser
 
 answer :: S -> String
 answer (Descriptive np) = "Tell me more about " ++ pluckNP np

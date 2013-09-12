@@ -20,9 +20,9 @@
 
 module TagSimplifier (simplifyTag) where
 
-import qualified Data.Map as M
-import Data.Char (toLower)
-import Data.Maybe (catMaybes)
+import           Data.Char  (toLower)
+import           Data.Maybe (catMaybes)
+import qualified Data.Map   as M
 
 mapping1, mapping2 :: M.Map String String
 mapping1 = M.fromList [
